@@ -7,5 +7,5 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true
   },
-  base: './' // 이걸 추가하면 dist/index.html에서 상대 경로로 JS/CSS를 찾음
+  base: './' // 중요! JS/CSS가 상대경로로 로드되도록 설정
 })
