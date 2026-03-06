@@ -1,16 +1,13 @@
 {
   "hosting": {
-    "public": "dist",
+    "public": "dist",      // 여기서 dist로 바꿔야 함
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
     "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
+      { "source": "**", "destination": "/index.html" }
     ]
   }
 }
