@@ -4,7 +4,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    outDir: 'dist',   // Firebase에 배포되는 폴더
-    emptyOutDir: true // 빌드 전에 dist 폴더 비우기
-  }
+    outDir: 'dist',
+    emptyOutDir: true
+  },
+  base: './' // 이걸 추가하면 dist/index.html에서 상대 경로로 JS/CSS를 찾음
 })
