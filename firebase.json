@@ -1,7 +1,16 @@
 {
   "hosting": {
-    "public": "dist",          // 반드시 dist 폴더
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "cleanUrls": true
+    "public": "dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
   }
 }
