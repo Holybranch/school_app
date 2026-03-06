@@ -3,19 +3,19 @@ import { initializeApp } from 'firebase/app';
 import {
   getAuth,
   signInAnonymously,
-  signInWithCustomToken,
-  onAuthStateChanged
+  onAuthStateChanged,
+  User
 } from 'firebase/auth';
 import {
   getFirestore,
   collection,
   doc,
-  setDoc,
   updateDoc,
   onSnapshot,
   addDoc,
   serverTimestamp,
-  writeBatch
+  writeBatch,
+  Timestamp
 } from 'firebase/firestore';
 import {
   Search,
@@ -29,31 +29,56 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-// Firebase 설정
-const firebaseConfig = JSON.parse(__firebase_config);
+// --- 인터페이스 정의 (TypeScript 에러 방지) ---
+interface Student {
+  id: string;
+  name: string;
+  studentId: string;
+}
+
+interface AttendanceRecord {
+  id: string;
+  studentId: string;
+  name: string;
+  entryTime: Timestamp;
+  exitTime: Timestamp | null;
+  date: string;
+  duration?: number;
+}
+
+// --- Firebase 설정 ---
+// 여기에 본인의 실제 Firebase Config 객체를 넣으세요.
+// 만약 빌드 시 주입받는 환경이라면 아래와 같이 기본값을 방어적으로 설정합니다.
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_ID",
+  appId: "YOUR_APP_ID"
+};
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'daily-miracle-juseong';
+const appId = 'daily-miracle-juseong';
 
 const App = () => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [foundStudent, setFoundStudent] = useState(null);
-  const [students, setStudents] = useState([]);
-  const [attendance, setAttendance] = useState([]);
+  const [foundStudent, setFoundStudent] = useState<Student | 'not_found' | null>(null);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
 
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) { console.error("Auth initialization failed:", err); }
+        await signInAnonymously(auth);
+      } catch (err) { 
+        console.error("Auth initialization failed:", err); 
+      }
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
@@ -62,17 +87,17 @@ const App = () => {
 
   useEffect(() => {
     if (!user) return;
-   
+    
     const studentsRef = collection(db, 'artifacts', appId, 'public', 'data', 'students');
     const attendanceRef = collection(db, 'artifacts', appId, 'public', 'data', 'attendance');
 
     const unsubStudents = onSnapshot(studentsRef, (snapshot) => {
-      setStudents(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      setStudents(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Student)));
       setLoading(false);
     });
 
     const unsubAttendance = onSnapshot(attendanceRef, (snapshot) => {
-      setAttendance(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      setAttendance(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord)));
     });
 
     return () => { unsubStudents(); unsubAttendance(); };
@@ -87,7 +112,7 @@ const App = () => {
     return students.filter(s => activeIds.includes(s.studentId));
   }, [students, activeRecords]);
 
-  const handleSearch = (e) => {
+  const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     const s = students.find(x => x.studentId === searchQuery);
@@ -109,20 +134,19 @@ const App = () => {
     } catch (err) { console.error("Check-in error:", err); }
   };
 
-  const handleCheckOut = async (sid) => {
+  const handleCheckOut = async (sid: string) => {
     if (!user) return;
     const record = activeRecords.find(x => x.studentId === sid);
     if (!record) return;
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'attendance', record.id), {
         exitTime: serverTimestamp(),
-        duration: Math.floor((new Date() - record.entryTime.toDate()) / 60000)
+        duration: Math.floor((new Date().getTime() - record.entryTime.toDate().getTime()) / 60000)
       });
       setFoundStudent(null);
     } catch (err) { console.error("Check-out error:", err); }
   };
 
-  // 일괄 퇴실 처리
   const handleBulkCheckOut = async () => {
     if (!user || activeRecords.length === 0) return;
     if (!window.confirm(`현재 입실 중인 ${activeRecords.length}명을 모두 퇴실 처리하시겠습니까?`)) return;
@@ -133,7 +157,7 @@ const App = () => {
         const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'attendance', record.id);
         batch.update(docRef, {
           exitTime: serverTimestamp(),
-          duration: Math.floor((new Date() - record.entryTime.toDate()) / 60000)
+          duration: Math.floor((new Date().getTime() - record.entryTime.toDate().getTime()) / 60000)
         });
       });
       await batch.commit();
@@ -142,15 +166,14 @@ const App = () => {
   };
 
   if (loading && !user) return (
-    <div className="h-screen flex flex-col items-center justify-center bg-indigo-700 text-white font-sans">
+    <div className="h-screen flex flex-col items-center justify-center bg-indigo-700 text-white">
       <div className="animate-pulse mb-4 text-4xl">● ● ●</div>
       <div className="text-xl font-bold tracking-[0.3em]">DAILY MIRACLE</div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-[#F8FAFF] font-sans text-slate-900 pb-20">
-      {/* 헤더 섹션 */}
+    <div className="min-h-screen bg-[#F8FAFF] text-slate-900 pb-20">
       <header className="bg-white px-8 pt-12 pb-8 rounded-b-[3.5rem] shadow-sm border-b border-indigo-50">
         <div className="max-w-xl mx-auto flex items-center justify-between">
           <div>
@@ -167,9 +190,8 @@ const App = () => {
       </header>
 
       <main className="max-w-xl mx-auto px-6 mt-10 space-y-10">
-        {/* 관리자 메뉴 (일괄 퇴실) */}
         {showAdminMenu && (
-          <section className="bg-indigo-50 p-6 rounded-[2.5rem] border-2 border-indigo-100 animate-in slide-in-from-top-4">
+          <section className="bg-indigo-50 p-6 rounded-[2.5rem] border-2 border-indigo-100">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <AlertCircle size={20} className="text-indigo-600" />
@@ -186,7 +208,6 @@ const App = () => {
           </section>
         )}
 
-        {/* 학생 검색 및 액션 카드 */}
         <section className="bg-white p-8 rounded-[3rem] shadow-2xl shadow-indigo-100/50 border border-white relative overflow-hidden">
           <form onSubmit={handleSearch} className="relative z-10">
             <div className="flex items-center gap-3 mb-2 ml-2">
@@ -202,12 +223,12 @@ const App = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
-              <button className="absolute right-2 top-2 bottom-2 px-8 bg-indigo-600 text-white rounded-2xl font-black shadow-lg hover:bg-indigo-700 active:scale-95 transition-all">확인</button>
+              <button type="submit" className="absolute right-2 top-2 bottom-2 px-8 bg-indigo-600 text-white rounded-2xl font-black shadow-lg hover:bg-indigo-700 active:scale-95 transition-all">확인</button>
             </div>
           </form>
 
           {foundStudent && (
-            <div className="mt-8 p-8 bg-indigo-600 rounded-[2.5rem] text-white shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="mt-8 p-8 bg-indigo-600 rounded-[2.5rem] text-white shadow-2xl">
               {foundStudent === 'not_found' ? (
                 <div className="text-center py-4">
                   <p className="text-xl font-black">등록되지 않은 학번입니다.</p>
@@ -224,7 +245,7 @@ const App = () => {
                        <UserCheck size={36} className="text-white" />
                     </div>
                   </div>
-                 
+                  
                   <div className="pt-6 border-t border-indigo-500/50">
                     {activeStudents.some(s => s.studentId === foundStudent.studentId) ? (
                       <button
@@ -249,7 +270,6 @@ const App = () => {
           )}
         </section>
 
-        {/* 입실 현황 리스트 */}
         <section className="px-2">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-xl font-black text-slate-800 flex items-center gap-3 tracking-tight">
